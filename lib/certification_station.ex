@@ -14,7 +14,7 @@ defmodule CertificationStation do
   end
 
   defp check_severity(days) when days < 5,
-    do: {:error, "Certificate expires in less than 5 days"}
+    do: {:critical, "Certificate expires in less than 5 days"}
 
   defp check_severity(days) when days < 15,
     do: {:warn, "Certificate expires in less than 15 days"}
@@ -40,12 +40,23 @@ defmodule CertificationStation do
     |> Enum.map(fn
       {{:exit, :timeout}, domain} -> {domain, {:error, :timeout}}
       {{:ok, {:error, reason}}, domain} -> {domain, {:error, reason}}
-      {{:ok, {:ok, validity}}, domain} -> {domain, validate_expiry(validity)}
+      {{:ok, {:ok, validity}}, domain} -> {domain, {:ok, validate_expiry(validity)}}
     end)
   end
 
+  def print_with_color({:ok, message}), do: IO.ANSI.green() <> message <> IO.ANSI.reset()
+  def print_with_color({:info, message}), do: IO.ANSI.blue() <> message <> IO.ANSI.reset()
+  def print_with_color({:warn, message}), do: IO.ANSI.yellow() <> message <> IO.ANSI.reset()
+  def print_with_color({_, message}), do: IO.ANSI.red() <> message <> IO.ANSI.reset()
+
+  def pretty_print_validity({domain, {:ok, result}}),
+    do: IO.puts("#{domain} " <> print_with_color(result))
+
+  def pretty_print_validity({domain, {:error, {:tls_alert, {reason, _}}}}),
+    do: IO.puts("#{domain} " <> print_with_color({:error, Atom.to_string(reason)}))
+
   def start(_type, _args) do
-    [
+    domains = [
       "google.com",
       "github.com",
       "elixir-lang.org",
@@ -57,12 +68,9 @@ defmodule CertificationStation do
       "netflix.com",
       "wikipedia.org"
     ]
-    |> fetch_domains()
-    |> IO.inspect()
 
-    Task.start(fn ->
-      :timer.sleep(1000)
-      IO.puts("done sleeping")
-    end)
+    for d <- fetch_domains(domains), do: pretty_print_validity(d)
+
+    {:ok, self()}
   end
 end
